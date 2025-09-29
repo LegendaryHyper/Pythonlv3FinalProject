@@ -36,6 +36,9 @@ class DatabaseManager:
                                 use_id INTEGER PRIMARY KEY,
                                 use TEXT)
                                 ''')
+            conn.execute('''CREATE TABLE IF NOT EXISTS loot_pools(
+                                loot_id INTEGER PRIMARY KEY)
+                                ''')
             conn.commit()
     def add_user(self, user_id, user_name):
         conn = sqlite3.connect(self.database)
@@ -61,7 +64,7 @@ class DatabaseManager:
         conn = sqlite3.connect(self.database)
         with conn:
             cur = conn.cursor()
-            cur.execute("SELECT COUNT(*) FROM shop")
+            cur.execute("SELECT COUNT(*) FROM items")
             item_id = cur.fetchall()[0][0] + 1
             self.shop_counter = item_id
             if sold:
@@ -70,6 +73,15 @@ class DatabaseManager:
             no_space = item_name.replace(" ", "")
             conn.execute(f"ALTER TABLE balance_and_items ADD {no_space} 'INTEGER'")
             conn.execute(f"UPDATE balance_and_items SET {no_space} = 0")
+            conn.commit()
+    def add_loot_pool(self, pool_name, pool):
+        conn = sqlite3.connect(self.database)
+        with conn:
+            cur = conn.cursor()
+            no_space = pool_name.replace(" ", "")
+            conn.execute(f"ALTER TABLE loot_pools ADD {no_space} 'TEXT'")
+            for i in pool:
+                conn.execute(f"INSERT INTO loot_pools ({no_space}) VALUES (?)", (i,))
             conn.commit()
     def add_use(self, use_name):
         conn = sqlite3.connect(self.database)
@@ -98,6 +110,12 @@ class DatabaseManager:
             cur = conn.cursor()
             cur.execute("SELECT item_name, cost FROM shop")
             return cur.fetchall()
+    def get_random_loot(self, pool_name):
+        conn = sqlite3.connect(self.database)
+        with conn:
+            cur = conn.cursor()
+            cur.execute(f"SELECT {pool_name} FROM loot_pools ORDER BY RANDOM() LIMIT 1")
+            return cur.fetchall()[0][0]
     def get_uses(self):
         conn = sqlite3.connect(self.database)
         with conn:
@@ -122,6 +140,22 @@ class DatabaseManager:
                         inventory += f"{item} - {i}\n"
                     skipper += 1
             return inventory
+    def check_inv(self, user_id, item_name):
+        conn = sqlite3.connect(self.database)
+        skipper = 0
+        with conn:
+            cur = conn.cursor()
+            cur.execute("SELECT * FROM balance_and_items WHERE user_id = ?", (user_id,))
+            inv_list = cur.fetchall()[0]
+            for i in inv_list:
+                if skipper <= 1:
+                    skipper += 1
+                else:
+                    cur.execute("SELECT item_name FROM items WHERE item_id = ?", (skipper - 1,))
+                    item = cur.fetchall()[0][0]
+                    if item_name == item:
+                        return i
+                    skipper += 1
     def update_inv(self, user_id, item_name, delta):
         conn = sqlite3.connect(self.database)
         no_space = item_name.replace(" ", "")
@@ -141,6 +175,12 @@ class DatabaseManager:
         with conn:
             cur = conn.cursor()
             cur.execute("SELECT cost FROM shop WHERE item_name = ?", (item_name,))
+            return cur.fetchall()[0][0]
+    def get_use(self, item_name):
+        conn = sqlite3.connect(self.database)
+        with conn:
+            cur = conn.cursor()
+            cur.execute("SELECT use FROM items WHERE item_name = ?", (item_name,))
             return cur.fetchall()[0][0]
     def get_balance(self, user_id):
         conn = sqlite3.connect(self.database)

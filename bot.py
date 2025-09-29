@@ -3,6 +3,9 @@ from discord.ext import commands, tasks
 from logic import DatabaseManager
 from config import TOKEN, DATABASE
 import os
+import random
+import asyncio
+
 
 intents = discord.Intents.default()
 intents.messages = True
@@ -12,6 +15,7 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 
 manager = DatabaseManager(DATABASE)
 manager.create_tables()
+
 
 @bot.event
 async def on_ready():
@@ -42,6 +46,14 @@ async def add_use(ctx, use_name):
     if ctx.author.id == 722496876351455293:
         manager.add_use(use_name)
         await ctx.send(f"Successfully added {use_name} as a way of usage!")
+    else:
+        await ctx.send("Sorry, no perms!")
+@bot.command()
+async def add_loot_pool(ctx, pool_name, loots):
+    if ctx.author.id == 722496876351455293:
+        loot_list = loots.split(" ")
+        manager.add_loot_pool(pool_name, loot_list)
+        await ctx.send(f"Successfully added {loot_list} as loot '{pool_name}!'")
     else:
         await ctx.send("Sorry, no perms!")
 @bot.command()
@@ -81,7 +93,31 @@ async def buy(ctx, item_name, count):
             await ctx.send(f"{ctx.author.mention} has successfully bought {count_int} {item_name}s for {delta*count_int} bucks!")
 @bot.command()
 async def use(ctx, item_name):
-    user_id = ctx.author.id # TO BE ADDED
+    user_id = ctx.author.id
+    count = manager.check_inv(user_id, item_name)
+    if count > 0:
+        usage = manager.get_use(item_name)
+        if usage == 0:
+            await ctx.send("This item is not usable.")
+        elif usage == 1:
+            msg = await ctx.send(manager.get_random_loot("LootT1"))
+            for i in range (5):
+                await asyncio.sleep(0.5)
+                await msg.edit(content=manager.get_random_loot("LootT1"))
+            final_outcome = manager.get_random_loot("LootT1")
+            if final_outcome.isdecimal():
+                await msg.edit(content=f"{ctx.author.mention}, you just dropped {final_outcome} bucks!")
+                manager.set_balance(user_id, int(final_outcome))
+            else:
+                await msg.edit(content=f"{ctx.author.mention}, you just dropped one {final_outcome}!")
+                manager.update_inv(user_id, final_outcome, 1)
+        elif usage == 11:
+            gain = random.randint(1000, 3000)
+            manager.set_balance(user_id, gain)
+            await ctx.send(f"You just got {gain} bucks from the BoxOBucks!")
+        manager.update_inv(user_id, item_name, -1)
+    else:
+        await ctx.send(f"Uh oh, {ctx.author.mention}, you don't have the item!")
 @bot.command()
 async def get_inv(ctx):
     user_id = ctx.author.id
