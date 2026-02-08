@@ -1,2 +1,2 @@
-TOKEN = ''
+TOKEN = 'TOKEN'
 DATABASE = 'data.db'

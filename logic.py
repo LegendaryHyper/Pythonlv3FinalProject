@@ -60,6 +60,12 @@ class DatabaseManager:
             balance = cur.fetchall()[0]
             conn.execute("UPDATE balance_and_items SET balance = ? WHERE user_id = ?", (balance[0] + delta, user_id))
             conn.commit()
+    def get_balance(self, user_id):
+        conn = sqlite3.connect(self.database)
+        with conn:
+            cur = conn.cursor()
+            cur.execute("SELECT balance FROM balance_and_items WHERE user_id = ?", (user_id,))
+            return cur.fetchall()[0][0]
     def add_item(self, item_name, item_cost, sold, use):
         conn = sqlite3.connect(self.database)
         with conn:
@@ -188,6 +194,30 @@ class DatabaseManager:
             cur = conn.cursor()
             cur.execute("SELECT balance FROM balance_and_items WHERE user_id = ?", (user_id,))
             return cur.fetchall()[0][0]
+    def user_order(self, user_id):
+        conn = sqlite3.connect(self.database)
+        with conn:
+            cur = conn.cursor()
+            cur.execute("SELECT user_id, balance, RANK() OVER (ORDER BY balance DESC) as rank FROM balance_and_items")
+            ranked_list = cur.fetchall()
+            row_count = len(ranked_list)
+            #print(ranked_list)
+            #print(row_count)
+            cur.execute("SELECT balance FROM balance_and_items WHERE user_id = ?", (user_id,))
+            user_balance = cur.fetchall()[0][0]
+            user_rank = 0
+            for i in ranked_list:
+                if user_id == i[0]:
+                    user_rank = i[2]
+                    break
+            output = ""
+            for j in range(min(row_count, 10)):
+                #print(j)
+                #print(ranked_list[j])
+                output += f"{ranked_list[j][2]}. <@{ranked_list[j][0]}> - {ranked_list[j][1]}\n"
+            output += f"\n Your rank is {user_rank}, <@{user_id}>"
+            return output
+                
 if __name__ == '__main__':
     manager = DatabaseManager(DATABASE)
     manager.set_balance()

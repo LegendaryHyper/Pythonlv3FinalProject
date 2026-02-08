@@ -1,5 +1,6 @@
 import discord
-from discord.ext import commands, tasks
+from discord.ext import commands, tasks, commands
+from discord import ui, ButtonStyle, app_commands
 from logic import DatabaseManager
 from config import TOKEN, DATABASE
 import os
@@ -16,10 +17,54 @@ bot = commands.Bot(command_prefix='!', intents=intents)
 manager = DatabaseManager(DATABASE)
 manager.create_tables()
 
+class AddItemMW(discord.ui.Modal):
+    def __init__(self):
+        super().__init__(title="Add Item")
+        self.name = discord.ui.TextInput(label="Item Name")
+        self.sold = discord.ui.TextInput(label="Is used? (leave blank if no)", required=False)
+        self.cost = discord.ui.TextInput(label="Item Cost")
+        self.use = discord.ui.TextInput(label="Item Use")
+        
+
+        self.add_item(self.name)
+        self.add_item(self.sold)
+        self.add_item(self.cost)
+        self.add_item(self.use)
+
+    async def on_submit(self, interaction: discord.Interaction):
+        manager.add_item(item_name=self.name.value, item_cost=int(self.cost.value), sold=bool(self.sold.value), use=int(self.use.value))
+        await interaction.response.send_message("✅ Added item", ephemeral=True)
+
+
+class AddItemButton(ui.Button):
+    # Belirli özellikler sahip bir butonun başlatılması
+    def __init__(self, label="Add Item", style=ButtonStyle.blurple, row=0):
+        super().__init__(label=label, style=style, row=row)
+
+
+    # Butona basıldığında çağrılan bir yöntem
+    async def callback(self, interaction: discord.Interaction):
+        await interaction.response.send_modal(AddItemMW())
+        # Basıldıktan sonra butonun stilini değiştirme
+        self.style = ButtonStyle.gray
+        # Yanıtın daha önce gönderilip gönderilmediğini kontrol etme
+        if not interaction.response.is_done():
+            # Gecikmeli yanıt için hazırlık yapma
+            await interaction.response.defer()
+
+
+class AddItemView(ui.View):
+    # Görünümü başlatma
+    def __init__(self, user_id = None):
+        super().__init__()
+        self.add_item(AddItemButton())
+
+
 
 @bot.event
 async def on_ready():
-    print(f'{bot.user} olarak giriş yapıldı!')
+    # await bot.tree.sync()
+    print(f'Logged in as {bot.user}!')
 @bot.command()
 async def add(ctx):
     user_id = ctx.author.id
@@ -28,12 +73,32 @@ async def add(ctx):
     else:
         manager.add_user(user_id, ctx.author.name)
         await ctx.send("You have been added!")
+@bot.tree.command(name="work")
+async def work(interaction: discord.Interaction):
+    user_id = interaction.user.id
+    income = 100
+    manager.set_balance(user_id, income)
 @bot.command()
+@commands.cooldown(1, 30, commands.BucketType.user)
 async def work(ctx):
     user_id = ctx.author.id
     income = 100
     manager.set_balance(user_id, income)
-    await ctx.send(f"Woah, {ctx.author.mention}! For your efforts, you just got {income} bucks!")
+    await ctx.send(f"Good job, {ctx.author.mention}, you just got {income} bucks!")
+@work.error
+async def work_error(ctx, error):
+    if isinstance(error, commands.CommandOnCooldown):
+        await ctx.send(f"Not yet, {ctx.author.mention}, you still have {int(error.retry_after)} seconds remaining.")
+@bot.tree.command(name="balance")
+async def balance(interaction: discord.Interaction):
+    user_id = interaction.user.id
+    balance = manager.get_balance(user_id)
+    await interaction.response.send_message(f"{interaction.user.mention}, you have {balance} bucks!")
+@bot.command()
+async def balance(ctx):
+    user_id = ctx.author.id
+    balance = manager.get_balance(user_id)
+    await ctx.send(f"{ctx.author.mention}, you have {balance} bucks!")
 @bot.command()
 async def add_item(ctx, item_name, item_cost, sold, use):
     if ctx.author.id == 722496876351455293:
@@ -41,6 +106,12 @@ async def add_item(ctx, item_name, item_cost, sold, use):
         await ctx.send(f"Successfully added {item_name} to the shop for {item_cost}\n Item for sale: {bool(int(sold))}\nUsage Index: {int(use)}!")
     else:
         await ctx.send("Sorry, no perms!")
+@bot.tree.command(name="add_item_mw")
+async def add_item_mw(interaction: discord.Interaction):
+    if interaction.user.id == 722496876351455293:
+        await interaction.response.send_message("Click below:", view=AddItemView(), ephemeral = True)
+    else:
+        await interaction.response.send_message("Sorry, no perms!")
 @bot.command()
 async def add_use(ctx, use_name):
     if ctx.author.id == 722496876351455293:
@@ -128,5 +199,11 @@ async def get_inv(ctx):
     else:
         output += "Nothing in the inventory"
     embed = discord.Embed(title = f"Inventory of {ctx.author}", description = output, color = 0xffff00)
+    await ctx.send(embed = embed)
+@bot.command()
+async def top10(ctx):
+    user_id = ctx.author.id
+    output = manager.user_order(user_id)
+    embed = discord.Embed(title = f"Leaderboard", description = output, color = 0xff9d4e)
     await ctx.send(embed = embed)
 bot.run(TOKEN)
